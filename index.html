@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Legal Contract Analyzer</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-cloud/1.2.5/d3.layout.cloud.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f5f5f5;
+      color: #333;
+    }
+    header {
+      background-color: #4caf50;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+    }
+    .container {
+      max-width: 800px;
+      margin: 2rem auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
+    textarea {
+      width: 100%;
+      height: 150px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+    }
+    button {
+      background-color: #4caf50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-size: 1rem;
+      border-radius: 4px;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    .results {
+      margin-top: 2rem;
+    }
+    canvas {
+      margin: 1rem 0;
+    }
+    #wordCloud {
+      width: 100%;
+      height: 400px;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Legal Contract Analyzer</h1>
+</header>
+<div class="container">
+  <h2>Paste your legal contract below</h2>
+  <textarea id="contractInput" placeholder="Paste the contract here..."></textarea>
+  <button onclick="analyzeContract()">Analyze Contract</button>
+
+  <div class="results" id="results" style="display: none;">
+    <h2>Analysis Results</h2>
+    <p id="wordCount"></p>
+    <p id="uniqueWords"></p>
+    <p id="avgWordLength"></p>
+    <p id="sentenceCount"></p>
+    <p id="avgSentenceLength"></p>
+    <p id="readabilityScore"></p>
+    <canvas id="wordFrequencyChart"></canvas>
+    <div id="wordCloud"></div>
+  </div>
+</div>
+
+<script>
+  function analyzeContract() {
+    const contractText = document.getElementById("contractInput").value;
+    if (!contractText.trim()) {
+      alert("Please paste a contract to analyze!");
+      return;
+    }
+
+    // Split text into words
+    const words = contractText.toLowerCase().match(/\b\w+\b/g) || [];
+    const wordCount = words.length;
+
+    // Calculate unique words
+    const wordFrequencies = {};
+    words.forEach(word => {
+      wordFrequencies[word] = (wordFrequencies[word] || 0) + 1;
+    });
+
+    const uniqueWordCount = Object.keys(wordFrequencies).length;
+
+    // Calculate average word length
+    const totalWordLength = words.reduce((sum, word) => sum + word.length, 0);
+    const avgWordLength = wordCount > 0 ? (totalWordLength / wordCount).toFixed(2) : 0;
+
+    // Sentence analysis
+    const sentences = contractText.match(/[^.!?]+[.!?]+/g) || [];
+    const sentenceCount = sentences.length;
+    const avgSentenceLength = sentenceCount > 0 ? (wordCount / sentenceCount).toFixed(2) : 0;
+
+    // Compute readability score manually (Flesch-Kincaid formula)
+    const syllableCount = words.reduce((sum, word) => sum + countSyllables(word), 0);
+    const readabilityScore = sentenceCount > 0
+      ? (206.835 - (1.015 * (wordCount / sentenceCount)) - (84.6 * (syllableCount / wordCount))).toFixed(2)
+      : 0;
+
+    // Update results
+    document.getElementById("wordCount").innerText = `Word Count: ${wordCount}`;
+    document.getElementById("uniqueWords").innerText = `Unique Words: ${uniqueWordCount}`;
+    document.getElementById("avgWordLength").innerText = `Average Word Length: ${avgWordLength} characters`;
+    document.getElementById("sentenceCount").innerText = `Sentence Count: ${sentenceCount}`;
+    document.getElementById("avgSentenceLength").innerText = `Average Sentence Length: ${avgSentenceLength} words`;
+    document.getElementById("readabilityScore").innerText = `Readability Score (Flesch-Kincaid): ${readabilityScore}`;
+    document.getElementById("results").style.display = "block";
+
+    // Generate frequency chart
+    const sortedWords = Object.entries(wordFrequencies)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+
+    const labels = sortedWords.map(entry => entry[0]);
+    const data = sortedWords.map(entry => entry[1]);
+
+    const ctx = document.getElementById("wordFrequencyChart").getContext("2d");
+    new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [{
+          label: "Top 10 Word Frequencies",
+          data: data,
+          backgroundColor: "rgba(76, 175, 80, 0.6)",
+          borderColor: "rgba(76, 175, 80, 1)",
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false }
+        },
+        scales: {
+          y: { beginAtZero: true }
+        }
+      }
+    });
+
+    // Generate D3 word cloud
+    generateWordCloud(Object.entries(wordFrequencies));
+  }
+
+  function generateWordCloud(wordArray) {
+    const width = 800;
+    const height = 400;
+
+    const layout = d3.layout.cloud()
+      .size([width, height])
+      .words(wordArray.map(([word, freq]) => ({ text: word, size: freq * 10 })))
+      .padding(5)
+      .fontSize(d => d.size)
+      .on("end", drawWordCloud);
+
+    layout.start();
+
+    function drawWordCloud(words) {
+      d3.select("#wordCloud").html("");
+      d3.select("#wordCloud")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height)
+        .append("g")
+        .attr("transform", `translate(${width / 2}, ${height / 2})`)
+        .selectAll("text")
+        .data(words)
+        .enter()
+        .append("text")
+        .style("font-size", d => `${d.size}px`)
+        .style("fill", () => `#${Math.floor(Math.random() * 16777215).toString(16)}`)
+        .attr("text-anchor", "middle")
+        .attr("transform", d => `translate(${d.x}, ${d.y}) rotate(${d.rotate})`)
+        .text(d => d.text);
+    }
+  }
+
+  function countSyllables(word) {
+    word = word.toLowerCase();
+    if (word.length <= 3) return 1;
+    const vowels = 'aeiouy';
+    let count = 0;
+    let prevCharWasVowel = false;
+
+    for (let char of word) {
+      const isVowel = vowels.includes(char);
+      if (isVowel && !prevCharWasVowel) {
+        count++;
+      }
+      prevCharWasVowel = isVowel;
+    }
+
+    if (word.endsWith('e')) count--;
+    return count > 0 ? count : 1;
+  }
+</script>
+</body>
+</html>
